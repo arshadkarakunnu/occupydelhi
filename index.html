@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ml">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CITU Kerala – Occupy Delhi Profile Frame</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,sans-serif;background:#b30000;color:#fff;
+       display:flex;flex-direction:column;align-items:center;padding:16px;min-height:100vh}
+  h1{font-size:1.25rem;margin:4px 0 12px;text-align:center}
+  .wrap{width:100%;max-width:480px;background:#fff;border-radius:12px;overflow:hidden;
+        touch-action:none;box-shadow:0 6px 24px rgba(0,0,0,.4)}
+  canvas{width:100%;height:auto;display:block;cursor:grab}
+  .controls{width:100%;max-width:480px;margin-top:14px;display:flex;flex-direction:column;gap:12px}
+  label.btn,button{background:#fff;color:#b30000;font-weight:700;border:0;border-radius:8px;
+        padding:12px;text-align:center;font-size:1rem;cursor:pointer}
+  button.dl{background:#ffd400;color:#600}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  input[type=file]{display:none}
+  .zoom{display:flex;align-items:center;gap:10px}
+  .zoom input{flex:1}
+  small{opacity:.9;text-align:center}
+</style>
+</head>
+<body>
+<h1>Occupy Delhi – പ്രൊഫൈൽ ഫ്രെയിം</h1>
+
+<div class="wrap"><canvas id="c" width="1080" height="1080"></canvas></div>
+
+<div class="controls">
+  <label class="btn">📷 ഫോട്ടോ തിരഞ്ഞെടുക്കുക (Choose Photo)
+    <input type="file" id="file" accept="image/*">
+  </label>
+  <div class="zoom">🔍 <input type="range" id="zoom" min="1" max="4" step="0.01" value="1" disabled></div>
+  <small>Drag to move the photo • slider / pinch to zoom</small>
+  <button class="dl" id="dl" disabled>⬇ Download</button>
+</div>
+
+<script>
+const SIZE = 1080;
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const zoomEl = document.getElementById('zoom');
+const dlBtn = document.getElementById('dl');
+
+const frame = new Image();
+frame.src = 'frame.png';
+
+let photo = null, scale = 1, minScale = 1, x = 0, y = 0;
+
+function draw() {
+  ctx.clearRect(0, 0, SIZE, SIZE);
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, SIZE, SIZE);
+  if (photo) ctx.drawImage(photo, x, y, photo.width * scale, photo.height * scale);
+  if (frame.complete) ctx.drawImage(frame, 0, 0, SIZE, SIZE);   // frame on top
+}
+frame.onload = draw;
+
+function clamp() {
+  const w = photo.width * scale, h = photo.height * scale;
+  x = Math.min(0, Math.max(SIZE - w, x));
+  y = Math.min(0, Math.max(SIZE - h, y));
+}
+
+document.getElementById('file').addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const img = new Image();
+  img.onload = () => {
+    photo = img;
+    minScale = Math.max(SIZE / img.width, SIZE / img.height);   // cover
+    scale = minScale;
+    x = (SIZE - img.width * scale) / 2;
+    y = (SIZE - img.height * scale) / 2;
+    zoomEl.value = 1; zoomEl.disabled = false; dlBtn.disabled = false;
+    draw();
+  };
+  img.src = URL.createObjectURL(f);
+});
+
+function setZoom(z, cx = SIZE / 2, cy = SIZE / 2) {
+  if (!photo) return;
+  z = Math.min(4, Math.max(1, z));
+  const newScale = minScale * z, ratio = newScale / scale;
+  x = cx - (cx - x) * ratio;
+  y = cy - (cy - y) * ratio;
+  scale = newScale;
+  zoomEl.value = z;
+  clamp(); draw();
+}
+zoomEl.addEventListener('input', () => setZoom(parseFloat(zoomEl.value)));
+
+// Drag + pinch (pointer events)
+const pointers = new Map();
+let lastDist = 0;
+const toCanvas = e => {
+  const r = canvas.getBoundingClientRect();
+  return { x: (e.clientX - r.left) * SIZE / r.width, y: (e.clientY - r.top) * SIZE / r.height };
+};
+canvas.addEventListener('pointerdown', e => {
+  canvas.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, toCanvas(e));
+  if (pointers.size === 2) lastDist = dist();
+});
+canvas.addEventListener('pointermove', e => {
+  if (!photo || !pointers.has(e.pointerId)) return;
+  const prev = pointers.get(e.pointerId), cur = toCanvas(e);
+  pointers.set(e.pointerId, cur);
+  if (pointers.size === 1) {
+    x += cur.x - prev.x; y += cur.y - prev.y;
+    clamp(); draw();
+  } else if (pointers.size === 2) {
+    const d = dist();
+    if (lastDist) setZoom((scale / minScale) * (d / lastDist));
+    lastDist = d;
+  }
+});
+['pointerup', 'pointercancel'].forEach(t =>
+  canvas.addEventListener(t, e => { pointers.delete(e.pointerId); lastDist = 0; }));
+function dist() {
+  const [a, b] = [...pointers.values()];
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const p = toCanvas(e);
+  setZoom((scale / minScale) * (e.deltaY < 0 ? 1.08 : 0.92), p.x, p.y);
+}, { passive: false });
+
+dlBtn.addEventListener('click', () => {
+  canvas.toBlob(b => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(b);
+    a.download = 'occupy-delhi-frame.png';
+    a.click();
+  }, 'image/png');
+});
+</script>
+</body>
+</html>
